@@ -1,0 +1,128 @@
+TRAIN
+------
+create table TRAIN(
+create  table TRAIN(train_id varchar(4), route varchar(6) unique, available varchar(3), primary key(train_id));
+insert into TRAIN values('1232', 'A->B', '10');
+insert into TRAIN values('2321', 'B->A', '10');
+insert into TRAIN values('1234', 'C->D', '10');
+insert into TRAIN values('4321', 'D->C', '10');
+insert into TRAIN values('3456', 'E->F', '10');
+insert into TRAIN values('6543', 'F->E', '10');
+insert into TRAIN values('8642', 'B->A', '10');
+insert into train values('2468', 'A->B', '10');
+
+TRAIN_SCHEDULE
+--------------
+create table TRAIN_SCHEDULE(train_id varchar(4), day varchar(9), arrival_time varchar(8), foreign key(train_id) references TRAIN, check (day in ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY')));
+insert into TRAIN_SCHEDULE values('1232', 'MONDAY', '10 AM');
+insert into TRAIN_SCHEDULE values('2321', 'MONDAY', '10 AM');
+insert into TRAIN_SCHEDULE values('1234', 'SUNDAY', '6 AM');
+insert into TRAIN_SCHEDULE values('4321', 'SATURDAY', '4 PM');
+insert into TRAIN_SCHEDULE values('3456', 'THURSDAY', '5 PM');
+insert into TRAIN_SCHEDULE values('6543', 'FRIDAY', '9 PM');
+insert into train_schedule values('2468','WEDNESDAY','11 AM');
+insert into train_schedule values('8642','THURSDAY','8 PM');
+
+
+
+FEEDBACK
+--------
+create table FEEDBACK(feedback_id varchar(5), booking_id varchar(20), QOS varchar(12), primary key(feedback_id), foreign key(booking_id) references PASSENGER_BOOKING, check( QOS in ('SATISFACTORY', 'EXCELLENT', 'GOOD', 'BAD', 'POOR')));
+
+TRAIN_BOOKING
+------------
+create table TRAIN_BOOKING(train_id varchar(4), booking_id varchar(20), dat varchar(10), foreign key(train_id) references TRAIN, foreign key(booking_id) references PASSENGER_BOOKING);
+
+PASSENGER_TICKET
+----------------
+create table PASSENGER_TICKET(ticket_id varchar(25), aadhar_id varchar(12), booking_id varchar(20), primary key(ticket_id), foreign key(aadhar_id) references PASSENGER, foreign key(booking_id) references PASSENGER_BOOKING);
+
+PASSENGER_BOOKING
+-----------------
+create table PASSENGER_BOOKING(aadhar_id varchar(12), dat varchar(10), catering varchar(7), booking_id varchar(20), nos varchar(3), cost varchar(4), primary key(booking_id), foreign key(aadhar_id) references PASSENGER);
+
+PASSENGER_PHONE
+----------------
+create table PASSENGER_PHONE(aadhar_id varchar(12),phone varchar(10), foreign key(aadhar_id) references passenger); 
+
+PASSENGER
+----------
+create table PASSENGER(aadhar_id varchar(12), fname varchar(10), mname varchar(10), lname varchar(10), age varchar(3), sex varchar(1), email_id varchar(30), primary key(aadhar_id));
+
+
+********
+PL/SQL-  ****
+********
+
+trigger for updating seats available in train after booking is made:-
+--------------------------------------------------------------------
+create or replace trigger ticket_trigger after insert on TRAIN_BOOKING for each row
+DECLARE
+cursor chk is
+select * from TRAIN where train_id = :new.train_id;
+cnt TRAIN.cap % type;
+trn TRAIN.train_id % type;
+rot TRAIN.route % type;
+qnt TRAIN.cap % type;
+BEGIN
+select nos into qnt from PASSENGER_BOOKING where booking_id = :new.booking_id;
+open chk;
+fetch chk into trn, rot, cnt;
+update TRAIN set cap = cap - qnt where train_id = trn;
+close chk;
+END;
+/
+
+
+trigger for generating and inserting into ticket table after making booking:-
+-----------------------------------------------------------------------------
+create or replace trigger insert_ticket after insert on PASSENGER_BOOKING for each row
+DECLARE
+tkt1 varchar(20) := :new.booking_id;
+tkt2 varchar(25) := null;
+BEGIN
+FOR i in 1..TO_NUMBER(:new.nos, '99')
+LOOP
+tkt2 := tkt1 || '_' || i;
+insert into PASSENGER_TICKET values(tkt2, :new.aadhar_id, :new.booking_id);
+END LOOP;
+END;
+/
+
+procedure for fetching booking_id with negative (POOR/BAD) feedback:-
+---------------------------------------------------------------------
+create or replace PROCEDURE neg_feed_proc is
+cursor chk is
+select booking_id from FEEDBACK where QOS in ('POOR','BAD');
+book_id FEEDBACK.booking_id % type;
+BEGIN
+open chk;
+fetch chk into  book_id;
+WHILE chk % FOUND
+LOOP
+dbms_output.put_line(book_id);
+fetch chk into book_id;
+END LOOP;
+close chk;
+END;
+/
+
+procedure for cancelling booking:-
+----------------------------------
+ create or replace procedure del_book(b_id IN varchar)
+ as
+ upd varchar(3);
+ cnt int;
+ BEGIN
+ select count(booking_id) into cnt from PASSENGER_BOOKING where PASSENGER_BOOKING.booking_id = b_id;
+ IF cnt <> 0 THEN
+ select nos into upd from PASSENGER_BOOKING where PASSENGER_BOOKING.booking_id = b_id;
+ update TRAIN set cap = cap + upd where TRAIN.train_id = (select train_id from PASSENGER_BOOKING where PASSENGER_BOOKING.booking_id = b_id);
+ delete from PASSENGER_TICKET where PASSENGER_TICKET.booking_id = b_id;
+ delete from TRAIN_BOOKING where TRAIN_BOOKING.booking_id = b_id;
+ delete from PASSENGER_BOOKING where PASSENGER_BOOKING.booking_id = b_id;
+ ELSE
+ dbms_output.put_line(b_id || ' is an invalid BOOKING ID!!');
+ END IF;
+ END;
+ /
